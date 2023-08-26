@@ -33,6 +33,39 @@ class DecoderLayer(nn.Module):
         super().__init__()
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
         self.cross_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
+        #Quant dequant stubs.
+        self.quant_tgt = torch.ao.quantization.QuantStub()
+
+        self.quant_tgt = torch.ao.quantization.QuantStub()
+
+        self.quant_memory = torch.ao.quantization.QuantStub()
+
+        self.quant_tgt_norm = torch.ao.quantization.QuantStub()
+
+        self.quant_tgt_kv = torch.ao.quantization.QuantStub()
+
+        self.quant_tgt_mask=torch.ao.quantization.QuantStub()
+
+        self.quant_tgt_key_padding_mask=torch.ao.quantization.QuantStub()
+
+        self.dequant_tgt = torch.ao.quantization.DeQuantStub()
+        self.dequant_sa_weights = torch.ao.quantization.DeQuantStub()
+        self.dequant_ca_weights = torch.ao.quantization.DeQuantStub()
+
+
+        self.quant_query=torch.ao.quantization.QuantStub()
+        self.quant_content=torch.ao.quantization.QuantStub()
+        self.quant_memory=torch.ao.quantization.QuantStub()
+        self.quant_memory2=torch.ao.quantization.QuantStub()
+        self.quant_query_mask=torch.ao.quantization.QuantStub()
+        self.quant_content_mask=torch.ao.quantization.QuantStub()
+        self.quant_content_key_padding_mask=torch.ao.quantization.QuantStub()
+        self.quant_update_content=torch.ao.quantization.QuantStub()
+
+        self.dequant_query=torch.ao.quantization.DeQuantStub()
+        self.dequant_content=torch.ao.quantization.DeQuantStub()
+
+
         # Implementation of Feedforward model
         self.linear1 = nn.Linear(d_model, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
@@ -60,6 +93,14 @@ class DecoderLayer(nn.Module):
         Both tgt_kv and memory are expected to be LayerNorm'd too.
         memory is LayerNorm'd by ViT.
         """
+        tgt=self.quant_tgt(tgt)
+        tgt_norm=self.quant_tgt_norm(tgt_norm)
+        tgt_kv=self.quant_tgt_kv(tgt_kv)
+        memory=self.quant_memory(memory)
+        tgt_mask=self.quant_tgt_mask(tgt_mask)
+        tgt_key_padding_mask=self.quant_tgt_key_padding_mask(tgt_key_padding_mask)
+
+
         tgt2, sa_weights = self.self_attn(tgt_norm, tgt_kv, tgt_kv, attn_mask=tgt_mask,
                                           key_padding_mask=tgt_key_padding_mask)
         tgt = tgt + self.dropout1(tgt2)
@@ -69,16 +110,30 @@ class DecoderLayer(nn.Module):
 
         tgt2 = self.linear2(self.dropout(self.activation(self.linear1(self.norm2(tgt)))))
         tgt = tgt + self.dropout3(tgt2)
+        tgt=self.dequant_tgt(tgt)
+        sa_weights=self.dequant_sa_weights(sa_weights)
+        ca_weights=self.dequant_ca_weights(ca_weights)
         return tgt, sa_weights, ca_weights
 
     def forward(self, query, content, memory, query_mask: Optional[Tensor] = None, content_mask: Optional[Tensor] = None,
                 content_key_padding_mask: Optional[Tensor] = None, update_content: bool = True):
+
+        query=self.quant_query(query)
+        content=self.quant_content(content)
+        memory=self.quant_memory2(memory)
+        query_mask=self.quant_query_mask(query_mask)
+        content_mask=self.quant_content_mask(content_mask)
+        content_key_padding_mask=self.quant_content_key_padding_mask(content_key_padding_mask)
+        update_content=self.quant_update_content(update_content)
         query_norm = self.norm_q(query)
         content_norm = self.norm_c(content)
         query = self.forward_stream(query, query_norm, content_norm, memory, query_mask, content_key_padding_mask)[0]
         if update_content:
             content = self.forward_stream(content, content_norm, content_norm, memory, content_mask,
                                           content_key_padding_mask)[0]
+
+        query=self.dequant_query(query)
+        content=self.dequant_content(content)
         return query, content
 
 
@@ -91,14 +146,35 @@ class Decoder(nn.Module):
         self.num_layers = num_layers
         self.norm = norm
 
+        self.quant_query=torch.ao.quantization.QuantStub()
+        self.quant_content=torch.ao.quantization.QuantStub()
+        self.quant_memory=torch.ao.quantization.QuantStub()
+        self.quant_query_mask=torch.ao.quantization.QuantStub()
+        self.quant_content_mask=torch.ao.quantization.QuantStub()
+        self.quant_content_key_padding_mask=torch.ao.quantization.QuantStub()
+        self.quant_update_content=torch.ao.quantization.QuantStub()
+
+        self.dequant_query=torch.ao.quantization.DeQuantStub()
+        self.dequant_content=torch.ao.quantization.DeQuantStub()
+
+
     def forward(self, query, content, memory, query_mask: Optional[Tensor] = None, content_mask: Optional[Tensor] = None,
                 content_key_padding_mask: Optional[Tensor] = None):
-        for i, mod in enumerate(self.layers):
-            last = i == len(self.layers) - 1
-            query, content = mod(query, content, memory, query_mask, content_mask, content_key_padding_mask,
-                                 update_content=not last)
-        query = self.norm(query)
-        return query
+
+
+      query=self.quant_query(query)
+      content=self.quant_content(content)
+      memory=self.quant_memory(memory)
+      query_mask=self.quant_query_mask(query_mask)
+      content_mask=self.quant_content_mask(content_mask)
+      content_key_padding_mask=self.quant_content_key_padding_mask(content_key_padding_mask)
+
+      for i, mod in enumerate(self.layers):
+          last = i == len(self.layers) - 1
+          query, content = mod(query, content, memory, query_mask, content_mask, content_key_padding_mask,
+                                update_content=not last)
+      query = self.norm(query)
+      return query
 
 
 class Encoder(VisionTransformer):
@@ -110,9 +186,15 @@ class Encoder(VisionTransformer):
                          drop_path_rate=drop_path_rate, embed_layer=embed_layer,
                          num_classes=0, global_pool='', class_token=False)  # these disable the classifier head
 
+        self.quant=torch.ao.quantization.QuantStub()
+        self.dequant=torch.ao.quantization.DeQuantStub()
+
     def forward(self, x):
         # Return all tokens
-        return self.forward_features(x)
+        x=self.quant(x)
+        x=self.forward_features(x)
+        x=self.dequant(x)
+        return x
 
 
 class TokenEmbedding(nn.Module):
