@@ -6,7 +6,7 @@ from torch.utils.mobile_optimizer import optimize_for_mobile
 import os
 
 parser=argparse.ArgumentParser()
-parser.add_argument("--source_path",required=True,help="Path to the trained model pth file.")
+parser.add_argument("--source_path",required=True,help="Path to the trained model ckpt file.")
 parser.add_argument("--target_path",required=True,help="Path where to export the trained model.")
 parser.add_argument("--optimize_for_mobile",default=True,required=False,help="Whether to apply optimization for mobile.")
 
@@ -23,7 +23,8 @@ quantized_parseq = torch.quantization.quantize_dynamic(
 )
 
 #Convert to torchscript.
-torchscript_model=torch.jit.script(quantized_parseq)
+dummy_tensor=torch.rand((1,3,parseq.hparams.img_size[0],parseq.hparams.img_size[1]))
+torchscript_model=torch.jit.trace(quantized_parseq,dummy_tensor)
 
 #Optimize for mobile devices if required.
 
