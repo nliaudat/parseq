@@ -75,6 +75,7 @@ def main():
     parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--cased', action='store_true', default=False, help='Cased comparison')
     parser.add_argument('--punctuation', action='store_true', default=False, help='Check punctuation')
+    parser.add_argument('--digits', action='store_true', default=False, help='Only digits')
     parser.add_argument('--new', action='store_true', default=False, help='Evaluate on new benchmark datasets')
     parser.add_argument('--rotation', type=int, default=0, help='Angle of rotation (counter clockwise) in degrees.')
     parser.add_argument('--device', default='cuda')
@@ -86,6 +87,8 @@ def main():
         charset_test += string.ascii_uppercase
     if args.punctuation:
         charset_test += string.punctuation
+    if args.digits: #only digits
+        charset_test = string.digits
     kwargs.update({'charset_test': charset_test})
     print(f'Additional keyword arguments: {kwargs}')
 
