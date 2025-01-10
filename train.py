@@ -23,7 +23,7 @@ from omegaconf import DictConfig, open_dict
 import torch
 
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint, StochasticWeightAveraging
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.model_summary import summarize
@@ -61,7 +61,9 @@ def main(config: DictConfig):
         devices = config.trainer.get('devices', 0)
         if gpu:
             # Use mixed-precision training
-            config.trainer.precision = 'bf16-mixed' if torch.get_autocast_gpu_dtype() is torch.bfloat16 else '16-mixed'
+            config.trainer.precision = 'bf16-mixed' if torch.get_autocast_dtype('cuda') is torch.bfloat16 else '16-mixed'
+            # Set float32 matrix multiplication precision
+            torch.set_float32_matmul_precision('medium')
         if gpu and devices > 1:
             # Use DDP with optimizations
             trainer_strategy = DDPStrategy(find_unused_parameters=False, gradient_as_bucket_view=True)
@@ -77,7 +79,7 @@ def main(config: DictConfig):
     model: BaseSystem = hydra.utils.instantiate(config.model)
     # If specified, use pretrained weights to initialize the model
     if config.pretrained is not None:
-        m = model.model if config.model._target_.endswith('PARSeq') else model
+        m = model.model if config.model._target_.endswith('PARseq') else model
         m.load_state_dict(get_pretrained_weights(config.pretrained))
     print(summarize(model, max_depth=2))
 
@@ -90,21 +92,23 @@ def main(config: DictConfig):
         save_last=True,
         filename='{epoch}-{step}-{val_accuracy:.4f}-{val_NED:.4f}',
     )
-    swa_epoch_start = 0.75
-    swa_lr = config.model.lr * get_swa_lr_factor(config.model.warmup_pct, swa_epoch_start)
-    swa = StochasticWeightAveraging(swa_lr, swa_epoch_start)
+
     cwd = (
         HydraConfig.get().runtime.output_dir
         if config.ckpt_path is None
         else str(Path(config.ckpt_path).parents[1].absolute())
     )
+
+    # Configure the Trainer
     trainer: Trainer = hydra.utils.instantiate(
         config.trainer,
         logger=TensorBoardLogger(cwd, '', '.'),
         strategy=trainer_strategy,
         enable_model_summary=False,
-        callbacks=[checkpoint, swa],
+        callbacks=[checkpoint],  # Removed SWA callback to avoid conflicts with OneCycleLR
     )
+
+    # Train the model
     trainer.fit(model, datamodule=datamodule, ckpt_path=config.ckpt_path)
 
 
