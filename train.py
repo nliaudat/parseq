@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
+import os
+import time
 from pathlib import Path
 
 import hydra
@@ -23,7 +25,7 @@ from omegaconf import DictConfig, open_dict
 import torch
 
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, StochasticWeightAveraging
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.model_summary import summarize
@@ -92,6 +94,11 @@ def main(config: DictConfig):
         save_last=True,
         filename='{epoch}-{step}-{val_accuracy:.4f}-{val_NED:.4f}',
     )
+    
+    # Removed SWA callback to avoid conflicts with OneCycleLR
+    # swa_epoch_start = 0.75
+    # swa_lr = config.model.lr * get_swa_lr_factor(config.model.warmup_pct, swa_epoch_start)
+    # swa = StochasticWeightAveraging(swa_lr, swa_epoch_start)
 
     cwd = (
         HydraConfig.get().runtime.output_dir
@@ -105,11 +112,36 @@ def main(config: DictConfig):
         logger=TensorBoardLogger(cwd, '', '.'),
         strategy=trainer_strategy,
         enable_model_summary=False,
+        # callbacks=[checkpoint, swa],
         callbacks=[checkpoint],  # Removed SWA callback to avoid conflicts with OneCycleLR
     )
 
     # Train the model
     trainer.fit(model, datamodule=datamodule, ckpt_path=config.ckpt_path)
+    
+    
+    
+    
+    # Save the final checkpoint with a unique name
+    ckpt_path = config.ckpt_path if config.ckpt_path is not None else cwd
+
+    # Ensure ckpt_path is a directory, not a file
+    if os.path.isfile(ckpt_path):
+        ckpt_path = os.path.dirname(ckpt_path)
+
+    # Create a unique filename for the final checkpoint
+    final_ckpt_path = os.path.join(ckpt_path, f'final_{int(time.time())}.ckpt')
+
+    # Save the final checkpoint
+    trainer.save_checkpoint(final_ckpt_path)
+    print(f"Final checkpoint saved to {final_ckpt_path}")
+    
+    # Extract the model name from config.model._target_
+    model_name = config.model._target_.split('.')[-1].lower()  # e.g., "parseq" -> "parsec", "trba", "trbc"
+    # print(model_name)
+    final_model_path = os.path.join(ckpt_path, f'{model_name}_model.pt')
+    torch.save(model.state_dict(), final_model_path)
+    print(f"Model saved to {final_model_path}")
 
 
 if __name__ == '__main__':
