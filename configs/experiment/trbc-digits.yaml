@@ -9,18 +9,18 @@ model:
   # Data
   patch_size: [ 4, 8 ]  # [ height, width ]
   # Architecture
-  embed_dim: 384
-  enc_num_heads: 6
-  enc_mlp_ratio: 4
-  enc_depth: 12
-  dec_num_heads: 12
-  dec_mlp_ratio: 4
-  dec_depth: 1
+  embed_dim: 64
+  enc_num_heads: 2
+  enc_mlp_ratio: 2
+  enc_depth: 2
+  dec_num_heads: 2
+  dec_mlp_ratio: 2
+  dec_depth: 2
   # Training
   # lr: 7e-4
-  perm_num: 6
+  perm_num: 5
   perm_forward: true
-  perm_mirrored: true
+  perm_mirrored: false
   dropout: 0.1
   # Decoding mode (test)
   decode_ar: true
@@ -28,3 +28,5 @@ model:
 
 data:
   num_workers: 3
+  charset_train: "0123456789"
+  charset_test: "0123456789"
