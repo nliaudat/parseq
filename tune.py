@@ -187,7 +187,7 @@ def main(config: DictConfig):
                 name=out_dir.name,
                 stop=MetricTracker('NED', max_t),
                 progress_reporter=reporter,
-                local_dir=str(out_dir.parent.absolute()),
+                storage_path=str(out_dir.parent.absolute()),  # Updated to use storage_path
             ),
         )
     else:
