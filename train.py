@@ -25,7 +25,7 @@ from omegaconf import DictConfig, open_dict
 import torch
 
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint, StochasticWeightAveraging
+from pytorch_lightning.callbacks import ModelCheckpoint, # StochasticWeightAveraging # Removed SWA callback to avoid conflicts with OneCycleLR
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.model_summary import summarize
@@ -97,6 +97,12 @@ def main(config: DictConfig):
         save_last=True,
         filename='{epoch}-{step}-{val_accuracy:.4f}-{val_NED:.4f}',
     )
+    
+    # Removed SWA callback to avoid conflicts with OneCycleLR
+    # swa_epoch_start = 0.75
+    # swa_lr = config.model.lr * get_swa_lr_factor(config.model.warmup_pct, swa_epoch_start)
+    # swa = StochasticWeightAveraging(swa_lr, swa_epoch_start)
+    
 
     # Determine the output directory
     cwd = (
@@ -111,7 +117,8 @@ def main(config: DictConfig):
         logger=TensorBoardLogger(cwd, '', '.'),
         strategy=trainer_strategy,
         enable_model_summary=False,
-        callbacks=[checkpoint],  # Removed SWA callback to avoid conflicts with OneCycleLR
+        # callbacks=[checkpoint, swa], # Removed SWA callback to avoid conflicts with OneCycleLR
+        callbacks=[checkpoint],  
     )
 
     # Train the model
