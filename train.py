@@ -15,7 +15,7 @@
 # limitations under the License.
 import math
 import os
-import time
+# import time
 from pathlib import Path
 
 import hydra
@@ -78,6 +78,7 @@ def main(config: DictConfig):
     if config.model.get('perm_mirrored', False):
         assert config.model.perm_num % 2 == 0, 'perm_num should be even if perm_mirrored = True'
 
+    # Instantiate the model
     model: BaseSystem = hydra.utils.instantiate(config.model)
     # If specified, use pretrained weights to initialize the model
     if config.pretrained is not None:
@@ -85,8 +86,10 @@ def main(config: DictConfig):
         m.load_state_dict(get_pretrained_weights(config.pretrained))
     print(summarize(model, max_depth=2))
 
+    # Instantiate the data module
     datamodule: SceneTextDataModule = hydra.utils.instantiate(config.data)
 
+    # Configure checkpointing
     checkpoint = ModelCheckpoint(
         monitor='val_accuracy',
         mode='max',
@@ -94,12 +97,8 @@ def main(config: DictConfig):
         save_last=True,
         filename='{epoch}-{step}-{val_accuracy:.4f}-{val_NED:.4f}',
     )
-    
-    # Removed SWA callback to avoid conflicts with OneCycleLR
-    # swa_epoch_start = 0.75
-    # swa_lr = config.model.lr * get_swa_lr_factor(config.model.warmup_pct, swa_epoch_start)
-    # swa = StochasticWeightAveraging(swa_lr, swa_epoch_start)
 
+    # Determine the output directory
     cwd = (
         HydraConfig.get().runtime.output_dir
         if config.ckpt_path is None
@@ -112,16 +111,12 @@ def main(config: DictConfig):
         logger=TensorBoardLogger(cwd, '', '.'),
         strategy=trainer_strategy,
         enable_model_summary=False,
-        # callbacks=[checkpoint, swa],
         callbacks=[checkpoint],  # Removed SWA callback to avoid conflicts with OneCycleLR
     )
 
     # Train the model
     trainer.fit(model, datamodule=datamodule, ckpt_path=config.ckpt_path)
-    
-    
-    
-    
+
     # Save the final checkpoint with a unique name
     ckpt_path = config.ckpt_path if config.ckpt_path is not None else cwd
 
@@ -130,17 +125,22 @@ def main(config: DictConfig):
         ckpt_path = os.path.dirname(ckpt_path)
 
     # Create a unique filename for the final checkpoint
-    final_ckpt_path = os.path.join(ckpt_path, f'final_{int(time.time())}.ckpt')
+    # final_ckpt_path = os.path.join(ckpt_path, f'final_{int(time.time())}.ckpt')
+    final_ckpt_path = os.path.join(ckpt_path, f'final.ckpt')
 
     # Save the final checkpoint
     trainer.save_checkpoint(final_ckpt_path)
     print(f"Final checkpoint saved to {final_ckpt_path}")
-    
+
     # Extract the model name from config.model._target_
     model_name = config.model._target_.split('.')[-1].lower()  # e.g., "parseq" -> "parsec", "trba", "trbc"
-    # print(model_name)
     final_model_path = os.path.join(ckpt_path, f'{model_name}_model.pt')
-    torch.save(model.state_dict(), final_model_path)
+
+    # Save the model state_dict along with hyperparameters
+    torch.save({
+        'state_dict': model.state_dict(),
+        'hparams': model.hparams,  # Ensure hyperparameters are saved
+    }, final_model_path)
     print(f"Model saved to {final_model_path}")
 
 
